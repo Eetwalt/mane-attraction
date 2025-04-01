@@ -359,9 +359,14 @@ function love.update(dt)
             goblin.anim = goblinAnimations.walk
             goblin.facingLeft = dx < 0
 
+            local nextDetectionIndex = sounds.lastDetectionIndex % 2 + 1
+            sounds.lastDetectionIndex = nextDetectionIndex
+            local nextDetection = sounds.goblinDetections[nextDetectionIndex]
+            local detectionClone = nextDetection:clone()
+            detectionClone:setPitch(love.math.random(80, 120) / 100)
+
             if not goblin.hasPlayedDetectionSound then
-                local goblinSound = sounds.goblin:clone()
-                goblinSound:play()
+                detectionClone:play()
                 goblin.hasPlayedDetectionSound = true
             end
         else
