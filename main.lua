@@ -107,10 +107,19 @@ function love.load()
     for _, step in ipairs(sounds.steps) do
         step:setVolume(0.4)
     end
-
     sounds.stepTimer = 0
     sounds.stepDelay = 0.3
     sounds.lastStepIndex = 0 -- Track which sound was played last
+
+    sounds.goblinDetections = {
+        love.audio.newSource("sounds/goblin/goblin-2.wav", "static"),
+        love.audio.newSource("sounds/goblin/goblin-6.wav", "static")
+    }
+
+    for _, goblinDetection in ipairs(sounds.goblinDetections) do
+        goblinDetection:setVolume(0.4)
+    end
+    sounds.lastDetectionIndex = 0 -- Track which sound was played last
 
     sounds.music = love.audio.newSource("sounds/music.mp3", "stream")
     sounds.music:setVolume(0.2)
@@ -303,6 +312,65 @@ function love.update(dt)
     end
 
     for _, goblin in ipairs(goblins) do
+        -- Update goblin position from collider
+        goblin.x = goblin.collider:getX()
+        goblin.y = goblin.collider:getY()
+        
+        -- Calculate distance to player
+        local dx = player.x - goblin.x
+        local dy = player.y - goblin.y
+        local distance = math.sqrt(dx*dx + dy*dy)
+        
+        -- Define detection and attack ranges
+        local detectionRange = 300  -- Starts chasing when player is within 300 pixels
+        local attackRange = 100     -- Starts attacking when player is within 100 pixels
+        
+        if distance <= attackRange then
+            -- Attack state
+            goblin.state = "attacking"
+            goblin.collider:setLinearVelocity(0, 0)
+            
+            -- Determine attack animation based on relative position
+            local angle = math.atan2(dy, dx)
+            goblin.facingLeft = dx < 0
+            
+            -- Choose attack animation based on angle
+            if math.abs(dx) > math.abs(dy) then
+                -- Horizontal attack
+                goblin.anim = goblinAnimations.attackLeft
+            elseif dy > 0 then
+                -- Attack downward
+                goblin.anim = goblinAnimations.attackDown
+            else
+                -- Attack upward
+                goblin.anim = goblinAnimations.attackUp
+            end
+            
+        elseif distance <= detectionRange then
+            -- Chase state
+            goblin.state = "chasing"
+            
+            -- Normalize direction and set velocity
+            local speed = 200  -- Adjust speed as needed
+            dx = dx / distance
+            dy = dy / distance
+            
+            goblin.collider:setLinearVelocity(dx * speed, dy * speed)
+            goblin.anim = goblinAnimations.walk
+            goblin.facingLeft = dx < 0
+
+            if not goblin.hasPlayedDetectionSound then
+                local goblinSound = sounds.goblin:clone()
+                goblinSound:play()
+                goblin.hasPlayedDetectionSound = true
+            end
+        else
+            -- Idle state
+            goblin.state = "idle"
+            goblin.collider:setLinearVelocity(0, 0)
+            goblin.anim = goblinAnimations.idle
+        end
+        
         goblin.anim:update(dt)
     end
 
@@ -435,6 +503,9 @@ function spawnGoblins(count)
             walk = goblinAnimations.walk:clone()
         }
         goblin.anim = goblin.animations.idle
+        goblin.state = "idle"
+        goblin.facingLeft = false
+        goblin.hasPlayedDetectionSound = false
 
         table.insert(goblins, goblin)
     end
