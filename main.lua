@@ -1,22 +1,5 @@
 function love.load()
-    conversionPhrases = {
-        "I see the light!",
-        "Show me the way!",
-        "I understand now!",
-        "Lead us forward!",
-        "My eyes are opened!",
-        "Together we rise!",
-        "The truth reveals itself!",
-        "A new purpose!",
-        "I'll follow you!",
-        "Enlightened at last!",
-        "The path is clear!",
-        "Count me in!",
-        "What was I thinking before?",
-        "This feels right!",
-        "Let's change the world!"
-    }
-
+    love.graphics.setDefaultFilter('nearest', 'nearest')
     wf = require 'libraries/windfield'
     world = wf.newWorld(0, 0)
     world:addCollisionClass('Player')
@@ -38,6 +21,32 @@ function love.load()
     local spawnX = mapW / 2
     local spawnY = mapH / 2
 
+    conversionPhrases = {
+        "I see the light!",
+        "Show me the way!",
+        "I understand now!",
+        "Lead us forward!",
+        "My eyes are opened!",
+        "Together we rise!",
+        "The truth reveals itself!",
+        "A new purpose!",
+        "I'll follow you!",
+        "Enlightened at last!",
+        "The path is clear!",
+        "Count me in!",
+        "What was I thinking before?",
+        "This feels right!",
+        "Let's change the world!"
+    }
+
+    attackSettings = {
+        normalAttackDuration = 0.6,
+        powerAttackDuration = 0.8,
+        powerAttackCooldown = 5.0,
+        normalAttackRange = 80,
+        powerAttackRange = 120
+    }
+
     player = {}
     player.collider = world:newBSGRectangleCollider(spawnX, spawnY, 45, 60, 10)
     player.collider:setFixedRotation(true)
@@ -45,6 +54,12 @@ function love.load()
     player.x = spawnX
     player.y = spawnY
     player.speed = 400
+
+    player.life = 100
+    player.maxLife = 100
+    player.invulnerableTime = 0
+    player.invulnerableDuration = 1.0
+
     player.spriteSheet = love.graphics.newImage('assets/Factions/Knights/Troops/Warrior/Blue/Warrior_Blue.png')
     player.grid = anim8.newGrid(192, 192, player.spriteSheet:getWidth(), player.spriteSheet:getHeight())
 
@@ -55,8 +70,23 @@ function love.load()
     player.animations.right = anim8.newAnimation(player.grid('1-6', 2), 0.1)
     player.animations.left = anim8.newAnimation(player.grid('1-6', 2), 0.1):flipH()
 
-    player.anim = player.animations.idle
+    player.animations.normalAttackRight = anim8.newAnimation(player.grid('1-6', 4), 0.1)
+    player.animations.normalAttackLeft = anim8.newAnimation(player.grid('1-6', 4), 0.1):flipH()
+    player.animations.normalAttackDown = anim8.newAnimation(player.grid('1-6', 6), 0.1)
+    player.animations.normalAttackUp = anim8.newAnimation(player.grid('1-6', 8), 0.1)
+
+    player.animations.powerAttackRight = anim8.newAnimation(player.grid('1-6', 3), 0.1)
+    player.animations.powerAttackLeft = anim8.newAnimation(player.grid('1-6', 3), 0.1):flipH()
+    player.animations.powerAttackDown = anim8.newAnimation(player.grid('1-6', 5), 0.1)
+    player.animations.powerAttackUp = anim8.newAnimation(player.grid('1-6', 7), 0.1)
+
+    player.anim = player.animations.idleRight
     player.facingLeft = false
+    player.lastDirection = "right"
+    player.isAttacking = false
+    player.attackType = nil
+    player.attackTimer = 0
+    player.powerAttackCooldown = 0
 
     folks = {}
     folkSprite = love.graphics.newImage('assets/Factions/Knights/Troops/Pawn/Yellow/Pawn_Yellow.png')
@@ -79,7 +109,7 @@ function love.load()
     goblinGrid = anim8.newGrid(192, 192, goblinSprite:getWidth(), goblinSprite:getHeight())
 
     goblinAnimations = {}
-    goblinAnimations.idle = anim8.newAnimation(goblinGrid('1-7', 1), 0.1)
+    goblinAnimations.idle = anim8.newAnimation(goblinGrid('1-7', 1), 4)
     goblinAnimations.walk = anim8.newAnimation(goblinGrid('1-6', 2), 0.1)
     goblinAnimations.attackLeft = anim8.newAnimation(goblinGrid('1-6', 3), 0.1)
     goblinAnimations.attackDown = anim8.newAnimation(goblinGrid('1-6', 4), 0.1)
@@ -126,11 +156,30 @@ function love.load()
     sounds.music:setLooping(true)
     sounds.music:play()
 
+    sounds.hits = {
+        love.audio.newSource("sounds/hits/hit01.mp3.flac", "static"),
+        love.audio.newSource("sounds/hits/hit02.mp3.flac", "static"),
+        love.audio.newSource("sounds/hits/hit03.mp3.flac", "static")
+    }
+
+    for _, hit in ipairs(sounds.hits) do
+        hit:setVolume(0.4)
+    end
+    sounds.lastHitIndex = 0 -- Track which sound was played last
+
     hud = {}
     hud.converted = {}
     hud.converted.bgImage = love.graphics.newImage('assets/UI/Banners/Converted-Banner.png', { dpiscale = 1.4 })
     hud.converted.peopleConverted = 0
     hud.converted.font = love.graphics.newFont('assets/Fonts/Condiment-Regular.ttf', 28)
+
+    hud.life = {}
+    hud.life.leftBlock = love.graphics.newImage('assets/UI/LifeBars/1.png', { dpiscale = 0.4 })
+    hud.life.middleBlock = love.graphics.newImage('assets/UI/LifeBars/3.png', { dpiscale = 0.4 })
+    hud.life.rightBlock = love.graphics.newImage('assets/UI/LifeBars/4.png', { dpiscale = 0.4 })
+    hud.life.fill = love.graphics.newImage('assets/UI/LifeBars/life-fill.png', { dpiscale = 0.4 })
+    hud.life.width = 250
+    hud.life.padding = 20
 
     dialogBox = {}
     dialogBox.bgImage = love.graphics.newImage('assets/UI/Buttons/Button_Disable_3Slides.png')
@@ -147,64 +196,92 @@ function love.load()
 end
 
 function love.update(dt)
-    local isMoving = false
-
-    local vx = 0
-    local vy = 0
-
-    if love.keyboard.isDown("w") or love.keyboard.isDown("up") then
-        vy = -1
-        player.anim = player.animations.right
-        isMoving = true
+    if player.invulnerableTime > 0 then
+        player.invulnerableTime = player.invulnerableTime - dt
     end
 
-    if love.keyboard.isDown("s") or love.keyboard.isDown("down") then
-        vy = 1
-        player.anim = player.animations.right
-        isMoving = true
-    end
-    if love.keyboard.isDown("a") or love.keyboard.isDown("left") then
-        vx = -1
-        player.anim = player.animations.left
-        player.facingLeft = true
-        isMoving = true
+    if player.life <= 0 then
+        player.life = 0
     end
 
-    if love.keyboard.isDown("d") or love.keyboard.isDown("right") then
-        vx = 1
-        player.anim = player.animations.right
-        player.facingLeft = false
-        isMoving = true
-    end
-
-    if vx ~= 0 and vy ~= 0 then
-        local length = math.sqrt(vx * vx + vy * vy)
-        vx = vx / length
-        vy = vy /length
-    end
-
-    vx = vx * player.speed
-    vy = vy * player.speed
-
-    player.collider:setLinearVelocity(vx, vy)
-
-    if isMoving == false then
-        player.anim = player.facingLeft and player.animations.idleLeft or player.animations.idleRight
-        sounds.stepTimer = 0
+    if player.isAttacking then
+        print("Player attacking")
+        player.attackTimer = player.attackTimer - dt
+        player.collider:setLinearVelocity(0, 0)
+        if player.attackTimer <= 0 then
+            player.isAttacking = false
+            player.attackType = nil
+            player.anim = player.facingLeft and player.animations.idleLeft or player.animations.idleRight
+            print("Attack finished, returning to idle")
+        end
     else
-        sounds.stepTimer = sounds.stepTimer + dt
-        if sounds.stepTimer >= sounds.stepDelay then
+        local isMoving = false
+        local vx = 0
+        local vy = 0
+
+        if player.powerAttackCooldown > 0 then
+            player.powerAttackCooldown = player.powerAttackCooldown - dt
+        end
+
+        if love.keyboard.isDown("w") then
+            vy = -1
+            player.anim = player.animations.right
+            player.lastDirection = "up"
+            isMoving = true
+        end
+
+        if love.keyboard.isDown("s") then
+            vy = 1
+            player.anim = player.animations.right
+            player.lastDirection = "down"
+            isMoving = true
+        end
+
+        if love.keyboard.isDown("a") then
+            vx = -1
+            player.anim = player.animations.left
+            player.facingLeft = true
+            player.lastDirection = "left"
+            isMoving = true
+        end
+
+        if love.keyboard.isDown("d") then
+            vx = 1
+            player.anim = player.animations.right
+            player.facingLeft = false
+            player.lastDirection = "right"
+            isMoving = true
+        end
+
+        if vx ~= 0 and vy ~= 0 then
+            local length = math.sqrt(vx * vx + vy * vy)
+            vx = vx / length
+            vy = vy /length
+        end
+
+        vx = vx * player.speed
+        vy = vy * player.speed
+
+        player.collider:setLinearVelocity(vx, vy)
+
+        if isMoving == false then
+            player.anim = player.facingLeft and player.animations.idleLeft or player.animations.idleRight
             sounds.stepTimer = 0
-            sounds.stepDelay = love.math.random(25, 35) / 100
+        else
+            sounds.stepTimer = sounds.stepTimer + dt
+            if sounds.stepTimer >= sounds.stepDelay then
+                sounds.stepTimer = 0
+                sounds.stepDelay = love.math.random(25, 35) / 100
 
-            local nextStepIndex = sounds.lastStepIndex % 2 + 1
-            sounds.lastStepIndex = nextStepIndex
+                local nextStepIndex = sounds.lastStepIndex % 2 + 1
+                sounds.lastStepIndex = nextStepIndex
 
-            local nextStep = sounds.steps[nextStepIndex]
+                local nextStep = sounds.steps[nextStepIndex]
 
-            local stepClone = nextStep:clone()
-            stepClone:setPitch(love.math.random(80, 120) / 100)
-            stepClone:play()
+                local stepClone = nextStep:clone()
+                stepClone:setPitch(love.math.random(80, 120) / 100)
+                stepClone:play()
+            end
         end
     end
 
@@ -212,7 +289,12 @@ function love.update(dt)
     player.x = player.collider:getX()
     player.y = player.collider:getY()
 
-    player.anim:update(dt)
+    if player.anim then
+        player.anim:update(dt)
+    else
+        print("Warning: player.anim is nil")
+        player.anim = player.animations.idleRight
+    end
 
     for _, folk in ipairs(folks) do
 
@@ -337,18 +419,34 @@ function love.update(dt)
             -- Choose attack animation based on angle
             if math.abs(dx) > math.abs(dy) then
                 -- Horizontal attack
-                goblin.anim = goblinAnimations.attackLeft
+                goblin.anim = goblin.animations.attackLeft
             elseif dy > 0 then
                 -- Attack downward
-                goblin.anim = goblinAnimations.attackDown
+                goblin.anim = goblin.animations.attackDown
             else
                 -- Attack upward
-                goblin.anim = goblinAnimations.attackUp
+                goblin.anim = goblin.animations.attackUp
+            end
+
+            if player.invulnerableTime <= 0 and not goblin.hasAttacked then
+                player.life = player.life - 20
+                player.invulnerableTime = player.invulnerableDuration
+                goblin.hasAttacked = true
+
+                -- TODO: Add visual feedback and sfx for being hit
+                local nextHitIndex = sounds.lastHitIndex % 2 + 1
+                sounds.lastHitIndex = nextHitIndex
+                local nextHit = sounds.hits[nextHitIndex]
+                local hitClone = nextHit:clone()
+                hitClone:setPitch(love.math.random(80, 120) / 100)
+
+                hitClone:play()
             end
             
         elseif distance <= detectionRange then
             -- Chase state
             goblin.state = "chasing"
+            goblin.hasAttacked = false
             
             -- Normalize direction and set velocity
             local speed = 200  -- Adjust speed as needed
@@ -356,7 +454,7 @@ function love.update(dt)
             dy = dy / distance
             
             goblin.collider:setLinearVelocity(dx * speed, dy * speed)
-            goblin.anim = goblinAnimations.walk
+            goblin.anim = goblin.animations.walk
             goblin.facingLeft = dx < 0
 
             local nextDetectionIndex = sounds.lastDetectionIndex % 2 + 1
@@ -407,46 +505,35 @@ function love.draw()
         gameMap:drawLayer(gameMap.layers["Decor"])
         gameMap:drawLayer(gameMap.layers["Decor-2"])
 
+        if player.powerAttackCooldown > 0 then
+            love.graphics.setColor(1, 0, 0, 0.5)
+            love.graphics.print(string.format("Power Attack: %.1fs", player.powerAttackCooldown), player.x -50, player.y - 100)
+            love.graphics.setColor(1, 1, 1, 1) 
+        end
+
         for _, folk in ipairs(folks) do
             local sprite = folk.converted and folkSpriteConverted or folkSprite
             local scaleX = folk.facingLeft and -1 or 1
             folk.anim:draw(sprite, folk.x, folk.y, nil, scaleX, 1, 96, 96)
-            
-            -- Draw dialog if exists
-            drawDialog(folk)
-
         end
+
         for _, goblin in ipairs(goblins) do
             local sprite = goblinSprite
             local scaleX = goblin.facingLeft and -1 or 1
             goblin.anim:draw(sprite, goblin.x, goblin.y, nil, scaleX, 1, 96, 96)
         end
+
         player.anim:draw(player.spriteSheet, player.x, player.y, nil, nil, nil, 96, 96)
-        world:draw(.6)
+
+        for _, folk in ipairs(folks) do
+            if folk.dialog then
+                drawDialog(folk)
+            end
+        end
+        -- world:draw(.6)
     cam:detach()
 
     drawHud()
-end
-
-function drawHud()
-    local prevFont = love.graphics.getFont()
-    local r, g, b, a = love.graphics.getColor()
-
-    love.graphics.setFont(hud.converted.font)
-
-    local padding = 20
-    local screenWidth = love.graphics.getWidth()
-    local bgX = screenWidth - hud.converted.bgImage:getWidth() - padding
-    local bgY = 0
-    love.graphics.draw(hud.converted.bgImage, bgX, bgY)
-
-    love.graphics.setColor(0.086, 0.11, 0.18, 1)
-    local textX = bgX + 45
-    local textY = bgY + hud.converted.bgImage:getHeight()/2 - hud.converted.font:getHeight()/2 + 5
-    love.graphics.print("Folks Converted:   " .. hud.converted.peopleConverted, textX, textY)
-
-    love.graphics.setFont(prevFont)
-    love.graphics.setColor(r, g, b, a)
 end
 
 function love.keypressed(key)
@@ -457,7 +544,116 @@ function love.keypressed(key)
             sounds.music:play()
         end
     end
+    if key == "x" then
+        performAttack("normal")
+    elseif key == "space" and not player.isAttacking and player.powerAttackCooldown <= 0 then
+        performAttack("power")
+        player.powerAttackCooldown = attackSettings.powerAttackCooldown
+    end
 end
+
+function performAttack(attackType)
+    player.isAttacking = true
+    player.attackType = attackType
+
+    if attackType == "normal" then
+        player.attackTimer = attackSettings.normalAttackDuration
+    else
+        player.attackTimer = attackSettings.powerAttackDuration
+    end
+
+    if player.lastDirection == "up" then
+        player.anim = attackType == "normal" and player.animations.normalAttackUp or player.animations.powerAttackUp
+        print("Setting attack animation: up " .. attackType)
+    elseif player.lastDirection == "down" then
+        player.anim = attackType == "normal" and player.animations.normalAttackDown or player.animations.powerAttackDown
+        print("Setting attack animation: down " .. attackType)
+    elseif player.lastDirection == "left" then
+        player.anim = attackType == "normal" and player.animations.normalAttackLeft or player.animations.powerAttackLeft
+        print("Setting attack animation: left " .. attackType)
+    elseif player.lastDirection == "right" then
+        player.anim = attackType == "normal" and player.animations.normalAttackRight or player.animations.powerAttackRight
+        print("Setting attack animation: right " .. attackType)
+    end
+
+    checkAttackHits(attackType)
+end
+
+function checkAttackHits(attackType)
+    local attackRange = attackType == "normal" and attackSettings.normalAttackRange or attackSettings.powerAttackRange
+
+    for i, goblin in ipairs(goblins) do
+        local dx = goblin.x - player.x
+        local dy = goblin.y - player.y
+        local distance = math.sqrt(dx*dx + dy*dy)
+
+        local inDirection = false
+
+        if player.lastDirection == "up" and dy < 0 and math.abs(dy) > math.abs(dx) then
+            inDirection = true
+        elseif player.lastDirection == "down" and dy > 0 and math.abs(dy) > math.abs(dx) then
+            inDirection = true
+        elseif player.lastDirection == "left" and dx < 0 and math.abs(dx) > math.abs(dy) then
+            inDirection = true
+        elseif player.lastDirection == "right" and dx > 0 and math.abs(dx) > math.abs(dy) then
+            inDirection = true
+        end
+
+        if distance <= attackRange and inDirection then
+            table.remove(goblins, i)
+            goblin.collider:destroy()
+            break
+        end
+    end
+end
+
+function drawHud()
+    local prevFont = love.graphics.getFont()
+    local r, g, b, a = love.graphics.getColor()
+
+    -- Draw converted folks counter
+    love.graphics.setFont(hud.converted.font)
+    local padding = 20
+    local screenWidth = love.graphics.getWidth()
+    local bgX = screenWidth - hud.converted.bgImage:getWidth() - padding
+    local bgY = 0
+    love.graphics.draw(hud.converted.bgImage, bgX, bgY)
+
+    love.graphics.setColor(0.086, 0.11, 0.18, 1)
+    local textX = bgX + 45
+    local textY = bgY + hud.converted.bgImage:getHeight()/2 - hud.converted.font:getHeight()/2 + 5
+    love.graphics.print("Folks Converted:   " .. hud.converted.peopleConverted, textX, textY)
+    
+    -- Draw lifebar
+    love.graphics.setColor(1, 1, 1, 1)
+    local lifeX = hud.life.padding
+    local lifeY = hud.life.padding
+    local leftWidth = hud.life.leftBlock:getWidth()
+    local rightWidth = hud.life.rightBlock:getWidth()
+    local middleWidth = hud.life.width - leftWidth - rightWidth
+
+    love.graphics.draw(hud.life.leftBlock, lifeX, lifeY)
+    
+    local middleScale = middleWidth / hud.life.middleBlock:getWidth()
+    love.graphics.draw(hud.life.middleBlock, lifeX + leftWidth, lifeY, 0, middleScale, 1)
+
+    love.graphics.draw(hud.life.rightBlock, lifeX + leftWidth + middleWidth, lifeY)
+
+    local lifePercentage = player.life / player.maxLife
+    local fillWidth = math.max(0, (hud.life.width - 48) * lifePercentage)
+
+    if fillWidth > 0 then
+        local fillQuad = love.graphics.newQuad(0, 0, fillWidth, hud.life.fill:getHeight(), hud.life.fill:getWidth(), hud.life.fill:getHeight())
+        love.graphics.draw(hud.life.fill, fillQuad, lifeX + 40, lifeY + 35)
+    end
+
+    -- love.graphics.setColor(1, 1, 1, 1)
+    -- love.graphics.print(math.floor(player.life) .. "/" .. player.maxLife, lifeX + hud.life.width/2 - 20, lifeY + 5)
+
+    love.graphics.setFont(prevFont)
+    love.graphics.setColor(r, g, b, a)
+end
+
 
 function spawnFolks(count)
     local margin = 200
@@ -505,12 +701,16 @@ function spawnGoblins(count)
         goblin.sprite = goblinSprite
         goblin.animations = {
             idle = goblinAnimations.idle:clone(),
-            walk = goblinAnimations.walk:clone()
+            walk = goblinAnimations.walk:clone(),
+            attackLeft = goblinAnimations.attackLeft:clone(),
+            attackDown = goblinAnimations.attackDown:clone(),
+            attackUp = goblinAnimations.attackUp:clone()
         }
         goblin.anim = goblin.animations.idle
         goblin.state = "idle"
         goblin.facingLeft = false
         goblin.hasPlayedDetectionSound = false
+        goblin.hasAttacked = false
 
         table.insert(goblins, goblin)
     end
