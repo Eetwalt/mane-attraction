@@ -3,4 +3,4 @@
 This project is part of the Team Liquid 2025 game jam.
 
 ## Game Description
-The premise of the game is that you are playing as Blue, attracting fans to follow you and avoiding haters.
+Find Folks, Convert Folks, Save Folks. Defeat nasty Goblins. Save all Folks to win.
