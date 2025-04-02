@@ -194,12 +194,12 @@ function love.load()
     end
     sounds.lastHitIndex = 0 -- Track which sound was played last
 
-    sssssud = {}
+    hud = {}
     hud.converted = {}
     hud.converted.bgImage = love.graphics.newImage('assets/UI/Banners/Converted-Banner.png', { dpiscale = 1.4 })
     hud.converted.peopleConverted = 0
     hud.converted.peopleSaved = 0
-    hud.converted.totalFolks = 10
+    hud.converted.totalFolks = 30
     hud.converted.font = love.graphics.newFont('assets/Fonts/Condiment-Regular.ttf', 28)
 
     hud.life = {}
