@@ -200,6 +200,14 @@ function love.load()
         love.audio.newSource("sounds/goblin/goblin-6.wav", "static")
     }
 
+    sounds.goblinDies = {
+        love.audio.newSource("sounds/goblin/goblin-3.wav", "static"),
+    }
+
+    for _, goblinDie in ipairs(sounds.goblinDies) do
+        goblinDie:setVolume(0.4)
+    end
+
     for _, goblinDetection in ipairs(sounds.goblinDetections) do
         goblinDetection:setVolume(0.4)
     end
@@ -264,6 +272,12 @@ function love.load()
     dialogBox.rightSlice = love.graphics.newQuad(sliceWidth*2,0, sliceWidth, imgH, imgW, imgH)
     dialogBox.sliceWidth = sliceWidth
 
+    effects = {}
+    effects.explosionSprite = love.graphics.newImage('assets/Effects/Explosions.png')
+    effects.explosionGrid = anim8.newGrid(192, 192, effects.explosionSprite:getWidth(), effects.explosionSprite:getHeight())
+    effects.explosionAnimation = anim8.newAnimation(effects.explosionGrid('1-9', 1), 0.1)
+    effects.activeExplosions = {}
+
     walls = {}
     if gameMap.layers["Walls"] then
         for i, obj in pairs(gameMap.layers["Walls"].objects) do
@@ -282,6 +296,15 @@ end
 function love.update(dt)
     if currentState == GameState.TITLE then
         return
+    end
+
+    for i = #effects.activeExplosions, 1, -1 do
+        local explosion = effects.activeExplosions[i]
+        explosion.animation:update(dt)
+
+        if explosion.isDone then
+            table.remove(effects.activeExplosions, i)
+        end
     end
 
     if currentState == GameState.PLAYING and gameTimer.active then
@@ -825,16 +848,15 @@ function love.draw()
         for _, goblin in ipairs(goblins) do
             local sprite = goblinSprite
             local scaleX = goblin.facingLeft and -1 or 1
-            -- if goblin.state == "preparing" then
-            --     love.graphics.setColor(1, 0, 0, 0.5 + math.sin(love.timer.getTime() * 10) * 0.5)
-            --     love.graphics.circle("fill", goblin.x, goblin.y - 60, 15)
-            --     love.graphics.setColor(1, 1, 1, 1)
-            -- end
 
             goblin.anim:draw(sprite, goblin.x, goblin.y, nil, scaleX, 1, 96, 96)
         end
 
         player.anim:draw(player.spriteSheet, player.x, player.y, nil, nil, nil, 96, 96)
+
+        for _, explosion in ipairs(effects.activeExplosions) do
+            explosion.animation:draw(effects.explosionSprite, explosion.x, explosion.y, nil, nil, nil, 96, 96)
+        end
 
         for _, folk in ipairs(folks) do
             if folk.dialog then
@@ -916,7 +938,16 @@ function drawVictoryScreen()
     local screenW = love.graphics.getWidth()
     local screenH = love.graphics.getHeight()
     
-    love.graphics.print(victoryText, (screenW - textW) / 2, screenH / 3)
+    love.graphics.print(victoryText, (screenW - textW) / 2, screenH / 6)
+
+    -- Draw stats
+    love.graphics.setFont(gameOver.smallFont)
+    local statsText = string.format("Time: %02d:%02d", 
+        math.floor(gameTimer.time / 60),
+        math.floor(gameTimer.time % 60)
+    )
+    local statsW = gameOver.smallFont:getWidth(statsText)
+    love.graphics.printf(statsText, (screenW - statsW) / 2, screenH / 3, statsW, "left")
     
     -- Draw play again button
     love.graphics.setFont(victory.smallFont)
@@ -1055,6 +1086,16 @@ function love.keypressed(key)
             sounds.music:play()
         end
     end
+
+    if key == "return" or key == "kpenter" then
+        if currentState == GameState.TITLE then
+            currentState = GameState.PLAYING
+            resetGame()
+        elseif currentState == GameState.VICTORY or currentState == GameState.GAME_OVER then
+            resetGame()
+        end
+    end
+
     if key == "space" then
         performAttack("normal")
     elseif key == "p" and not player.isAttacking and player.powerAttackCooldown <= 0 then
@@ -1111,6 +1152,11 @@ function checkAttackHits(attackType)
         end
 
         if distance <= attackRange and inDirection then
+            createExplosion(goblin.x, goblin.y)
+
+            local deathSound = sounds.goblinDies[1]:clone()
+            deathSound:setPitch(love.math.random(80, 120) / 100)
+            deathSound:play()
             table.remove(goblins, i)
             goblin.collider:destroy()
             break
@@ -1170,9 +1216,6 @@ function drawHud()
         local fillQuad = love.graphics.newQuad(0, 0, fillWidth, hud.life.fill:getHeight(), hud.life.fill:getWidth(), hud.life.fill:getHeight())
         love.graphics.draw(hud.life.fill, fillQuad, lifeX + 40, lifeY + 35)
     end
-
-    -- love.graphics.setColor(1, 1, 1, 1)
-    -- love.graphics.print(math.floor(player.life) .. "/" .. player.maxLife, lifeX + hud.life.width/2 - 20, lifeY + 5)
 
     love.graphics.setFont(prevFont)
     love.graphics.setColor(r, g, b, a)
@@ -1402,4 +1445,19 @@ function drawDialog(folk)
     -- Reset graphics state
     love.graphics.setFont(prevFont)
     love.graphics.setColor(1, 1, 1, 1)
+end
+
+function createExplosion(x, y)
+    local explosion = {
+        x = x,
+        y = y,
+        animation = effects.explosionAnimation:clone(),
+        isDone = false
+    }
+
+    explosion.animation.onLoop = function(anim)
+        explosion.isDone = true
+    end
+
+    table.insert(effects.activeExplosions, explosion)
 end
