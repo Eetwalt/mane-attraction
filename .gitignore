@@ -1,4 +1,5 @@
-/game
+/build
+Makefile
 mane-attraction.zip
 package-lock.json
 package.json

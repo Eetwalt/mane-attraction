@@ -1,2 +1,2 @@
 name = mane-attraction
-# compat_mode = -c
+compat_mode = -c
