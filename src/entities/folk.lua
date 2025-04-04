@@ -25,6 +25,13 @@ Folk.conversionPhrases = {
     "This feels right!",
     "Let's change the world!"
 }
+Folk.knownPositions = {
+    {x = 140 * 64 + 15, y = 55 * 64 + 15},
+    {x = 158 * 64 + 15, y = 65 * 64 + 15},
+    {x = 192 * 64 + 15, y = 63 * 64 + 15},
+    {x = 140 * 64 + 15, y = 21 * 64 + 15},
+    {x = 46 * 64 + 15, y = 3 * 64 + 15},
+}
 
 function Folk:load(mainSounds)
     Folk.sprite = love.graphics.newImage('assets/Factions/Knights/Troops/Pawn/Yellow/Pawn_Yellow.png')
@@ -42,13 +49,13 @@ function Folk:load(mainSounds)
     Folk.list = {}
 end
 
-function Folk:spawn(world, count, mapW, mapH, walls, knownPositions)
+function Folk:spawn(world, count, mapW, mapH, walls)
     local margin = 200
     local entityRadius = 30
     local maxAttemps = 50
     local centerExclusionRadius = 1000
 
-    for i, pos in ipairs(knownPositions) do
+    for i, pos in ipairs(self.knownPositions) do
         local folk = {}
         folk.collider = world:newCircleCollider(pos.x, pos.y, entityRadius)
         folk.collider:setFixedRotation(true)
@@ -68,7 +75,7 @@ function Folk:spawn(world, count, mapW, mapH, walls, knownPositions)
         table.insert(Folk.list, folk)
     end
 
-    for i = #knownPositions + 1, count do
+    for i = #self.knownPositions + 1, count do
         local folk = {}
         local validPosition = false
         local attemps = 0

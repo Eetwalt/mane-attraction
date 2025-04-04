@@ -13,19 +13,24 @@ local gameTimer = {
     font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 32)
 }
 
+wf = require 'libraries/windfield'
+camera = require 'libraries.camera'
+anim8 = require 'libraries.anim8'
+sti = require 'libraries/sti'
+
+hud = require('src.hud')
+
+Player = require('src.entities.player')
+Goblin = require('src.entities.goblin')
+Folk = require('src.entities.folk')
+Dude = require('src.entities.dude')
+
+TitleScreen = require('src.screens.title_screen')
+GameOverScreen = require('src.screens.game_over_screen')
+VictoryScreen = require('src.screens.victory_screen')
+
 function love.load()
     love.graphics.setDefaultFilter('nearest', 'nearest')
-    
-
-    wf = require 'libraries/windfield'
-    camera = require 'libraries.camera'
-    anim8 = require 'libraries.anim8'
-    sti = require 'libraries/sti'
-
-    hud = require('hud')
-    Player = require('player')
-    Goblin = require('goblin')
-    Folk = require('folk')
 
     world = wf.newWorld(0, 0)
     world:addCollisionClass('Player')
@@ -45,19 +50,8 @@ function love.load()
     mapW = gameMap.width * gameMap.tilewidth
     mapH = gameMap.height * gameMap.tileheight
 
-    local spawnX = mapW / 2
-    local spawnY = mapH / 2
-
-    player = Player:new(world, spawnX, spawnY)
-
-    hud:load(gameTimer)
-
-    titleScreen = {}
-    titleScreen.font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 72)
-    titleScreen.buttonFont = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 36)
-    titleScreen.bgImage = love.graphics.newImage('assets/UI/Banners/Title-Banner.png')
-    titleScreen.buttonWidth = 200
-    titleScreen.buttonHeight = 80
+    spawnX = mapW / 2
+    spawnY = mapH / 2
 
     base = {}
     base.bgImage = love.graphics.newImage('assets/Factions/Knights/Buildings/Castle_Blue.png')
@@ -69,25 +63,6 @@ function love.load()
     base.collider:setType('static')
     base.x = spawnX - 135
     base.y = spawnY - 250
-
-    dude = {}
-    dude.collider = world:newCircleCollider(spawnX + 155, spawnY + 90, 30)
-    dude.collider:setFixedRotation(true)
-    dude.collider:setCollisionClass('Dude')
-    dude.collider:setType('static')
-    dude.x = spawnX + 155
-    dude.y = spawnY + 90
-    dude.interactionRadius = 120
-    dude.dialogText = "Great gallopin’ griffons! There’s folks in distress - time to save the day!"
-    dude.dialog = nil
-    dude.dialogTimerDuration = 4.0
-    dude.dialogYOffset = -80
-
-    dude.speadSheet = love.graphics.newImage('assets/Factions/Knights/Troops/Archer/Archer_Blue.png')
-    dude.grid = anim8.newGrid(192, 192, dude.speadSheet:getWidth(), dude.speadSheet:getHeight())
-    dude.animations = {}
-    dude.animations.idle = anim8.newAnimation(dude.grid('1-6', 1), 0.1)
-    dude.anim = dude.animations.idle
 
     sounds = {}
     sounds.conversion = love.audio.newSource("sounds/wololo.mp3", "static")
@@ -134,18 +109,13 @@ function love.load()
         hit:setVolume(0.4)
     end
 
-    victory = {}
-    victory.font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 48)
-    victory.smallFont = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 24)
-    victory.isActive = false
-    victory.buttonWidth = 200
-    victory.buttonHeight = 60
+    sounds.grunts = {
+        love.audio.newSource("sounds/grunts/grunt_4.wav", "static"),
+        love.audio.newSource("sounds/grunts/grunt_12.wav", "static"),
+        love.audio.newSource("sounds/grunts/grunt_21.wav", "static"),
+    }
 
-    gameOver = {}
-    gameOver.font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 48)
-    gameOver.smallFont = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 24)
-    gameOver.buttonWidth = 200
-    gameOver.buttonHeight = 60
+    sounds.gameover = love.audio.newSource("sounds/losetrumpet.mp3", "static")
 
     dialogBox = {}
     dialogBox.bgImage = love.graphics.newImage('assets/UI/Buttons/Button_Disable_3Slides.png')
@@ -177,18 +147,19 @@ function love.load()
         end
     end
 
-    local knownFolkPositions = {
-        {x = 140 * 64 + 15, y = 55 * 64 + 15},
-        {x = 158 * 64 + 15, y = 65 * 64 + 15},
-        {x = 192 * 64 + 15, y = 63 * 64 + 15},
-        {x = 140 * 64 + 15, y = 21 * 64 + 15},
-        {x = 46 * 64 + 15, y = 3 * 64 + 15},
-    }
 
-    Folk:load(sounds, conversionPhrases)
+    local goblinHouse = gameMap.getTileProperties
+
+    TitleScreen:load()
+    hud:load(gameTimer)
+    player = Player:new(world, spawnX, spawnY, sounds)
+    Dude:load(world, spawnX, spawnY)
+    Folk:load(sounds)
     Goblin:load(sounds)
-    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls, knownFolkPositions)
+    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
     Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
+    GameOverScreen:load(sounds)
+    VictoryScreen:load()
 end
 
 function love.update(dt)
@@ -209,7 +180,7 @@ function love.update(dt)
         hud:update(dt)
     end
 
-    dude.anim:update(dt)
+    Dude:update(dt, player, showDialog)
 
     player:update(dt)
 
@@ -242,26 +213,6 @@ function love.update(dt)
     player.x = player.collider:getX()
     player.y = player.collider:getY()
 
-    local dx_dude = player.x - dude.x
-    local dy_dude = player.y - dude.y
-    local distance_to_dude = math.sqrt(dx_dude * dx_dude + dy_dude * dy_dude)
-
-    if distance_to_dude < dude.interactionRadius then
-        if not dude.dialog then
-           showDialog(dude, dude.dialogText)
-           if dude.dialog then dude.dialog.timer = dude.dialogTimerDuration end
-        end
-    else
-        dude.dialog = nil
-    end
-
-    if dude.dialog then
-        dude.dialog.timer = dude.dialog.timer - dt
-        if dude.dialog.timer <= 0 then
-            dude.dialog = nil
-        end
-    end
-
     local victoryMet = Folk:update(dt, player, base, hud, showDialog)
 
     if victoryMet and currentState == GameState.PLAYING then
@@ -279,18 +230,17 @@ function love.update(dt)
 
     cam.x = math.max(w/2, math.min(cam.x, mapW - w/2))
     cam.y = math.max(h/2, math.min(cam.y, mapH - h/2))
-
 end
 
 function love.draw()
     if currentState == GameState.TITLE then
-        drawTitleScreen()
+        TitleScreen:draw()
         return
     elseif currentState == GameState.VICTORY then
-        drawVictoryScreen()
+        VictoryScreen:draw(gameTimer)
         return
     elseif currentState == GameState.GAME_OVER then
-        drawGameOverScreen()
+        GameOverScreen:draw(gameTimer, hud)
         return
     end
 
@@ -305,12 +255,9 @@ function love.draw()
 
         love.graphics.draw(base.bgImage, base.x, base.y)
 
-        dude.anim:draw(dude.speadSheet, dude.x, dude.y, nil, nil, nil, 96, 96)
-
+        Dude:draw()
         Folk:draw()
-
         Goblin:draw()
-
         player:draw()
 
         for _, explosion in ipairs(effects.activeExplosions) do
@@ -323,8 +270,8 @@ function love.draw()
             end
         end
 
-        if dude.dialog then
-            drawDialog(dude)
+        if Dude.dialog then
+            drawDialog(Dude)
         end
 
         -- world:draw(.6)
@@ -333,197 +280,22 @@ function love.draw()
     drawHud()
 end
 
-function drawTitleScreen()
-    love.graphics.setColor(0.1, 0.15, 0.2, 1)
-    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
-
-    love.graphics.setColor(1, 1, 1, 1)
-    love.graphics.setFont(titleScreen.font)
-    local title = "Mane Attraction"
-    local titleW = titleScreen.font:getWidth(title)
-    local titleH = titleScreen.font:getHeight()
-    local screenW = love.graphics.getWidth()
-    local screenH = love.graphics.getHeight()
-
-    local bannerScale = 1.5
-    local bannerW = titleScreen.bgImage:getWidth() * bannerScale
-    local bannerH = titleScreen.bgImage:getHeight() * bannerScale
-    local bannerX = (screenW - bannerW) / 2
-    local bannerY = screenH / 3.5 - bannerH / 2
-
-    love.graphics.draw(titleScreen.bgImage, bannerX, bannerY, 0, bannerScale, bannerScale)
-
-    love.graphics.setColor(0.086, 0.11, 0.18, 1)
-    love.graphics.print(title, (screenW - titleW) / 2, screenH / 4 - titleH / 2)
-
-    love.graphics.setFont(titleScreen.buttonFont)
-    local buttonText = "Play"
-    local buttonX = (screenW - titleScreen.buttonWidth) / 2
-    local buttonY = screenH * 0.6
-
-    love.graphics.setColor(0.2, 0.4, 0.8, 1)
-    love.graphics.rectangle("fill", buttonX, buttonY, titleScreen.buttonWidth, titleScreen.buttonHeight, 10)
-
-    love.graphics.setColor(1, 1, 1, 1)
-    local btnTextW = titleScreen.buttonFont:getWidth(buttonText)
-    local btnTextH = titleScreen.buttonFont:getHeight()
-    love.graphics.print(buttonText,
-        buttonX + (titleScreen.buttonWidth - btnTextW) / 2,
-        buttonY + (titleScreen.buttonHeight - btnTextH) / 2
-    )
-end
-
-
-function drawVictoryScreen()
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
-
-    love.graphics.setColor(1, 1, 1, 1)
-
-    love.graphics.setFont(victory.font)
-    local victoryText = "Victory!"
-    local textW = victory.font:getWidth(victoryText)
-    local textH = victory.font:getHeight()
-    local screenW = love.graphics.getWidth()
-    local screenH = love.graphics.getHeight()
-
-    love.graphics.print(victoryText, (screenW - textW) / 2, screenH / 6)
-
-    love.graphics.setFont(gameOver.smallFont)
-    local timeStr = "N/A"
-    if gameTimer then
-       timeStr = string.format("%02d:%02d",
-            math.floor(gameTimer.time / 60),
-            math.floor(gameTimer.time % 60)
-        )
-    end
-    local statsText = string.format("Time: %s", timeStr)
-    local statsW = gameOver.smallFont:getWidth(statsText)
-    love.graphics.printf(statsText, 0, screenH / 3, screenW, "center") -- Use printf for centering
-
-    love.graphics.setFont(victory.smallFont)
-    local buttonText = "Play Again"
-    local buttonX = (screenW - victory.buttonWidth) / 2
-    local buttonY = screenH * 0.6
-
-    love.graphics.setColor(0.2, 0.4, 0.8, 1)
-    love.graphics.rectangle("fill", buttonX, buttonY, victory.buttonWidth, victory.buttonHeight, 10)
-
-    love.graphics.setColor(1, 1, 1, 1)
-    local btnTextW = victory.smallFont:getWidth(buttonText)
-    local btnTextH = victory.smallFont:getHeight()
-    love.graphics.print(buttonText,
-        buttonX + (victory.buttonWidth - btnTextW) / 2,
-        buttonY + (victory.buttonHeight - btnTextH) / 2
-    )
-end
-
-function drawGameOverScreen()
-    love.graphics.setColor(0, 0, 0, 0.7)
-    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
-
-    love.graphics.setColor(1, 1, 1, 1)
-
-    love.graphics.setFont(gameOver.font)
-    local gameOverText = "Game Over"
-    local textW = gameOver.font:getWidth(gameOverText)
-    local textH = gameOver.font:getHeight()
-    local screenW = love.graphics.getWidth()
-    local screenH = love.graphics.getHeight()
-
-    love.graphics.print(gameOverText, (screenW - textW) / 2, screenH / 6)
-
-    love.graphics.setFont(gameOver.smallFont)
-     local timeStr = "N/A"
-    if gameTimer then
-       timeStr = string.format("%02d:%02d",
-            math.floor(gameTimer.time / 60),
-            math.floor(gameTimer.time % 60)
-        )
-    end
-    local statsText = string.format("Folks Converted: %d\nFolks Saved: %d/%d\nTime: %s",
-        hud.converted.peopleConverted,
-        hud.converted.peopleSaved,
-        hud.converted.totalFolks,
-        timeStr
-    )
-    local statsW = gameOver.smallFont:getWidth(statsText) -- Approx width for centering
-    love.graphics.printf(statsText, 0, screenH / 3, screenW, "center") -- Use printf for centering
-
-    local buttonText = "Try Again"
-    local buttonX = (screenW - gameOver.buttonWidth) / 2
-    local buttonY = screenH * 0.7
-
-    love.graphics.setColor(0.2, 0.4, 0.8, 1)
-    love.graphics.rectangle("fill", buttonX, buttonY, gameOver.buttonWidth, gameOver.buttonHeight, 10)
-
-    love.graphics.setColor(1, 1, 1, 1)
-    local btnTextW = gameOver.smallFont:getWidth(buttonText)
-    local btnTextH = gameOver.smallFont:getHeight()
-    love.graphics.print(buttonText,
-        buttonX + (gameOver.buttonWidth - btnTextW) / 2,
-        buttonY + (gameOver.buttonHeight - btnTextH) / 2
-    )
-end
-
 function love.mousepressed(x, y, button)
-    if currentState == GameState.TITLE and button == 1 then
-        local screenW = love.graphics.getWidth()
-        local screenH = love.graphics.getHeight()
-        local buttonX = (screenW - titleScreen.buttonWidth) / 2 -- Use titleScreen dimensions
-        local buttonY = screenH * 0.6
-        local buttonWidth = titleScreen.buttonWidth
-        local buttonHeight = titleScreen.buttonHeight
-
-        if x >= buttonX and x <= buttonX + buttonWidth and
-           y >= buttonY and y <= buttonY + buttonHeight then
-            currentState = GameState.PLAYING
-            resetGame()
-        end
-    elseif (currentState == GameState.VICTORY or currentState == GameState.GAME_OVER) and button == 1 then
-        local screenW = love.graphics.getWidth()
-        local screenH = love.graphics.getHeight()
-        local buttonWidth = (currentState == GameState.VICTORY) and victory.buttonWidth or gameOver.buttonWidth
-        local buttonHeight = (currentState == GameState.VICTORY) and victory.buttonHeight or gameOver.buttonHeight
-        local buttonY = (currentState == GameState.VICTORY) and screenH * 0.6 or screenH * 0.7
-        local buttonX = (screenW - buttonWidth) / 2
-
-        if x >= buttonX and x <= buttonX + buttonWidth and
-           y >= buttonY and y <= buttonY + buttonHeight then
-            resetGame()
-        end
+    local nextState = nil
+    if currentState == GameState.TITLE then
+        nextState = TitleScreen:mousepressed(x, y, button, GameState)
+    elseif currentState == GameState.VICTORY then
+        nextState = VictoryScreen:mousepressed(x, y, button, GameState)
+    elseif currentState == GameState.GAME_OVER then
+        nextState = GameOverScreen:mousepressed(x, y, button, GameState)
+    elseif currentState == GameState.PLAYING then
+        -- nothing to do
     end
-end
 
-function resetGame()
-    currentState = GameState.PLAYING
-    victory.isActive = false
-    hud:reset()
-    player.life = player.maxLife
-    player.invulnerableTime = 0
-
-    Folk:reset()
-    Goblin:reset()
-
-    local knownFolkPositions = {
-        {x = 140 * 64 + 15, y = 55 * 64 + 15},
-        {x = 158 * 64 + 15, y = 65 * 64 + 15},
-        {x = 192 * 64 + 15, y = 63 * 64 + 15},
-        {x = 140 * 64 + 15, y = 21 * 64 + 15},
-        {x = 46 * 64 + 15, y = 3 * 64 + 15},
-    }
-
-    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls, knownFolkPositions)
-    Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
-
-    local spawnX = mapW / 2
-    local spawnY = mapH / 2
-    player.collider:setPosition(spawnX, spawnY)
-    player.collider:setLinearVelocity(0, 0)
-
-    if gameTimer then
-       gameTimer.time = 0
-       gameTimer.active = true
+    if nextState == GameState.PLAYING then
+        resetGame()
+    elseif nextState == "reset" then
+        resetGame()
     end
 end
 
@@ -534,25 +306,49 @@ function love.keypressed(key)
         else
             sounds.music:play()
         end
+        return
     end
 
-    if key == "return" or key == "kpenter" then
-        if currentState == GameState.TITLE then
-            currentState = GameState.PLAYING
-            resetGame()
-        elseif currentState == GameState.VICTORY or currentState == GameState.GAME_OVER then
-            resetGame()
-        end
-    end
-
-    if currentState == GameState.PLAYING then
+    local nextState = nil
+    if currentState == GameState.TITLE then
+        nextState = TitleScreen:keypressed(key, GameState)
+    elseif currentState == GameState.VICTORY then
+        nextState = VictoryScreen:keypressed(key, GameState)
+    elseif currentState == GameState.GAME_OVER then
+        nextState = GameOverScreen:keypressed(key, GameState)
+    elseif currentState == GameState.PLAYING then
         if key == "space" then
             performAttack("normal")
         elseif key == "p" and not player.isAttacking and player.powerAttackCooldown <= 0 then
             performAttack("power")
         end
     end
+
+    if nextState == GameState.PLAYING then
+        resetGame()
+    elseif nextState == "reset" then
+        resetGame()
+    end
 end
+
+function resetGame()
+    currentState = GameState.PLAYING
+
+    hud:reset()
+    player:reset(spawnX, spawnY)
+
+    Folk:reset()
+    Goblin:reset()
+
+    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
+    Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
+
+    if gameTimer then
+       gameTimer.time = 0
+       gameTimer.active = true
+    end
+end
+
 
 function performAttack(attackType)
     if player:performAttack(attackType) then
@@ -573,13 +369,18 @@ end
 
 function showDialog(entity, text)
     local y_offset = -60
-    if entity == dude then y_offset = dude.dialogYOffset end
-
-    entity.dialog = {
-        text = text,
-        timer = 2,
-        y_offset = y_offset
-    }
+    if entity == Dude then
+        entity.dialog = {
+            text = text,
+            y_offset = y_offset
+        }
+    else
+        entity.dialog = {
+            text = text,
+            timer = 2,
+            y_offset = y_offset
+        }
+    end
 end
 
 function drawDialog(entity)
@@ -602,7 +403,12 @@ function drawDialog(entity)
     local bgX = entity.x - bgWidth/2
     local bgY = entity.y + entity.dialog.y_offset - bgHeight/2
 
-    local alpha = math.min(1, entity.dialog.timer * 2)
+    local alpha = nil
+    if entity == Dude then
+        alpha = 1
+    else
+        alpha = math.min(1, entity.dialog.timer * 2)
+    end
     love.graphics.setColor(1, 1, 1, alpha)
 
     love.graphics.draw(dialogBox.bgImage, dialogBox.leftSlice, bgX, bgY)

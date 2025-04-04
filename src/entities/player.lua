@@ -1,6 +1,6 @@
 local Player = {}
 
-function Player:new(world, spawnX, spawnY)
+function Player:new(world, spawnX, spawnY, sounds)
     local player = {}
     setmetatable(player, self)
     self.__index = self
@@ -11,6 +11,14 @@ function Player:new(world, spawnX, spawnY)
         powerAttackCooldown = 5.0,
         normalAttackRange = 80,
         powerAttackRange = 120
+    }
+
+    player.damageFlash = {
+        active = false,
+        duration = 1.0,
+        timer = 0,
+        frequency = 0.1,
+        visible = true
     }
 
     player.collider = world:newBSGRectangleCollider(spawnX, spawnY, 45, 60, 10)
@@ -53,6 +61,8 @@ function Player:new(world, spawnX, spawnY)
     player.attackTimer = 0
     player.powerAttackCooldown = 0
 
+    player.sounds = {}
+    player.sounds.grunts = sounds.grunts
 
     return player
 end
@@ -60,6 +70,21 @@ end
 function Player:update(dt)
     if self.invulnerableTime > 0 then
         self.invulnerableTime = self.invulnerableTime - dt
+    end
+
+    if self.damageFlash.active then
+        self.damageFlash.timer = self.damageFlash.timer - dt
+
+        if self.damageFlash.timer % self.damageFlash.frequency < self.damageFlash.frequency / 2 then
+            self.damageFlash.visible = false
+        else
+            self.damageFlash.visible = true
+        end
+
+        if self.damageFlash.timer <= 0 then
+            self.damageFlash.active = false
+            self.damageFlash.visible = true
+        end
     end
 
     if self.isAttacking then
@@ -134,41 +159,36 @@ function Player:update(dt)
 end
 
 function Player:draw()
-    self.anim:draw(self.spriteSheet, self.x, self.y, nil, nil, nil, 96, 96)
+    if not self.damageFlash.active or self.damageFlash.visible then
+        self.anim:draw(self.spriteSheet, self.x, self.y, nil, nil, nil, 96, 96)
+    end
 end
 
 function Player:performAttack(attackType)
-    -- Prevent starting a new attack if already attacking
     if self.isAttacking then
-        return false -- Indicate attack was NOT initiated
+        return false
     end
 
-    -- Prevent power attack if on cooldown (only check for power attack type)
     if attackType == "power" and self.powerAttackCooldown > 0 then
-        return false -- Indicate power attack is on cooldown
+        return false
     end
 
-    -- --- Attack IS initiated from here ---
     self.isAttacking = true
     self.attackType = attackType
 
-    -- Use self.attackSettings now
     if attackType == "normal" then
         self.attackTimer = self.attackSettings.normalAttackDuration
-        -- No cooldown for normal attack in this logic
     elseif attackType == "power" then
         self.attackTimer = self.attackSettings.powerAttackDuration
-        self.powerAttackCooldown = self.attackSettings.powerAttackCooldown -- Start the cooldown
+        self.powerAttackCooldown = self.attackSettings.powerAttackCooldown
     else
-        -- Unknown attack type - shouldn't happen based on main.lua, but good practice
         self.isAttacking = false
         self.attackType = nil
         print("Warning: Unknown attackType in Player:performAttack:", attackType)
         return false
     end
 
-    -- Set animation based on last direction
-    local animSet = (attackType == "normal") and self.animations or self.animations -- Corrected logic below
+    local animSet = (attackType == "normal") and self.animations or self.animations
     local attackAnimKey = ""
 
     if self.lastDirection == "up" then
@@ -177,45 +197,54 @@ function Player:performAttack(attackType)
         attackAnimKey = (attackType == "normal") and "normalAttackDown" or "powerAttackDown"
     elseif self.lastDirection == "left" then
          attackAnimKey = (attackType == "normal") and "normalAttackLeft" or "powerAttackLeft"
-    else -- Default to right if direction is unknown or "right"
+    else
         attackAnimKey = (attackType == "normal") and "normalAttackRight" or "powerAttackRight"
     end
 
     if self.animations[attackAnimKey] then
         self.anim = self.animations[attackAnimKey]
-        -- Optional: Reset animation to start? Depends on anim8 setup. If animations loop, this might be needed.
-        -- self.anim:gotoFrame(1)
-        -- self.anim:resume()
     else
-        print("Warning: Missing attack animation for key:", attackAnimKey)
-        -- Fallback to idle if animation missing?
         self.anim = self.facingLeft and self.animations.idleLeft or self.animations.idleRight
     end
 
-
-    return true -- Indicate attack WAS successfully initiated
+    return true
 end
 
--- Make sure takeDamage exists (add if missing)
 function Player:takeDamage(amount)
     if self.invulnerableTime <= 0 then
         self.life = self.life - amount
         self.invulnerableTime = self.invulnerableDuration
-        -- Add visual feedback? (Flash sprite, etc.)
-        if self.life < 0 then self.life = 0 end -- Prevent negative life
-        print("Player took damage! Life:", self.life) -- Debug print
+
+        self.damageFlash.active = true
+        self.damageFlash.timer = self.damageFlash.duration
+        self.damageFlash.visible = true
+
+        local gruntSound = self.sounds.grunts[1]:clone()
+        gruntSound:setPitch(love.math.random(80, 120) / 100)
+        gruntSound:play()
+
+        if self.life < 0 then 
+            local deathSound = self.sounds.grunts[3]:clone()
+            deathSound:play()
+            self.life = 0 
+        end
+
     end
 end
 
---[[ function Player:reset(spawnX, spawnY) -- Example reset function if needed later
+function Player:reset(spawnX, spawnY)
     self.collider:setPosition(spawnX, spawnY)
+    self.collider:setLinearVelocity(0, 0)
     self.x, self.y = self.collider:getPosition()
     self.life = self.maxLife
     self.isAttacking = false
     self.attackTimer = 0
     self.powerAttackCooldown = 0
     self.invulnerableTime = 0
+    self.damageFlash.active = false
+    self.damageFlash.visible = true
     self.anim = self.facingLeft and self.animations.idleLeft or self.animations.idleRight
-end ]]
+end
+
 return Player
 

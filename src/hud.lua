@@ -10,7 +10,7 @@ function Hud:load(gameTimer)
     self.converted.bgImage = love.graphics.newImage('assets/UI/Banners/Converted-Banner.png', { dpiscale = 1.4 })
     self.converted.peopleConverted = 0
     self.converted.peopleSaved = 0
-    self.converted.totalFolks = 1
+    self.converted.totalFolks = 15
     self.converted.font = love.graphics.newFont('assets/Fonts/Condiment-Regular.ttf', 28)
 
     -- Life bar

@@ -14,6 +14,7 @@ function Goblin:load(mainSounds)
     Goblin.settings = {
         attackPrepareTime = 0.8,
         attackCooldown = 1.5,
+        attackDamage = 20,
         normalAnimSpeed = 0.1,
         prepareAnimSpeed = 0.3
     }
@@ -33,7 +34,6 @@ function Goblin:load(mainSounds)
     Goblin.sounds.hits = mainSounds.hits
     Goblin.sounds.lastDetectionIndex = 0
     Goblin.sounds.lastHitIndex = 0
-
 end
 
 function Goblin:spawn(world, count, mapW, mapH, walls)
@@ -189,9 +189,8 @@ function Goblin:update(dt, player, mapW, mapH)
                 end
             end
 
-            if goblin.state == "attacking" and player.invulnerableTime <=0 and not goblin.hasAttacked then
-                player.life = player.life - 20
-                player.invulnerableTime = player.invulnerableDuration
+            if goblin.state == "attacking" and not goblin.hasAttacked then
+                player:takeDamage(Goblin.settings.attackDamage)
                 goblin.hasAttacked = true
                 goblin.attackCooldown = Goblin.settings.attackCooldown
 
