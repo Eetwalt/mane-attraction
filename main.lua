@@ -7,8 +7,15 @@ local GameState = {
 
 local currentState = GameState.TITLE
 
+local gameTimer = {
+    time = 0,
+    active = false,
+    font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 32)
+}
+
 function love.load()
     love.graphics.setDefaultFilter('nearest', 'nearest')
+    
 
     wf = require 'libraries/windfield'
     camera = require 'libraries.camera'
@@ -18,13 +25,18 @@ function love.load()
     hud = require('hud')
     Player = require('player')
     Goblin = require('goblin')
+    Folk = require('folk')
 
     world = wf.newWorld(0, 0)
     world:addCollisionClass('Player')
-    world:addCollisionClass('Folk', {enter = {'Player'}})
-    world:addCollisionClass('ConvertedFolk', {ignores = {'Player', 'ConvertedFolk'}})
-    world:addCollisionClass('Base', {enter = {'ConvertedFolk'}, ignores = {'Player'}})
+    world:addCollisionClass('Base', {ignores = {'Player'}})
     world:addCollisionClass('Dude')
+    world:addCollisionClass('Goblin')
+    world:addCollisionClass('Folk', {enter = {'Player'}})
+    world:addCollisionClass('ConvertedFolk', {
+        ignores = {'Player', 'ConvertedFolk'},
+        enter = {'Base'}
+    })
 
     cam = camera()
 
@@ -38,7 +50,7 @@ function love.load()
 
     player = Player:new(world, spawnX, spawnY)
 
-    hud:load()
+    hud:load(gameTimer)
 
     titleScreen = {}
     titleScreen.font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 72)
@@ -46,24 +58,6 @@ function love.load()
     titleScreen.bgImage = love.graphics.newImage('assets/UI/Banners/Title-Banner.png')
     titleScreen.buttonWidth = 200
     titleScreen.buttonHeight = 80
-
-    conversionPhrases = {
-        "I see the light!",
-        "Show me the way!",
-        "I understand now!",
-        "Lead us forward!",
-        "My eyes are opened!",
-        "Together we rise!",
-        "The truth reveals itself!",
-        "A new purpose!",
-        "I'll follow you!",
-        "Enlightened at last!",
-        "The path is clear!",
-        "Count me in!",
-        "What was I thinking before?",
-        "This feels right!",
-        "Let's change the world!"
-    }
 
     base = {}
     base.bgImage = love.graphics.newImage('assets/Factions/Knights/Buildings/Castle_Blue.png')
@@ -94,20 +88,6 @@ function love.load()
     dude.animations = {}
     dude.animations.idle = anim8.newAnimation(dude.grid('1-6', 1), 0.1)
     dude.anim = dude.animations.idle
-
-    folks = {}
-    folkSprite = love.graphics.newImage('assets/Factions/Knights/Troops/Pawn/Yellow/Pawn_Yellow.png')
-    folkSpriteConverted = love.graphics.newImage('assets/Factions/Knights/Troops/Pawn/Blue/Pawn_Blue.png')
-    folkGrid = anim8.newGrid(192, 192, folkSprite:getWidth(), folkSprite:getHeight())
-    folkGridConverted = anim8.newGrid(192, 192, folkSpriteConverted:getWidth(), folkSpriteConverted:getHeight())
-
-    folkAnimations = {}
-    folkAnimations.idle = anim8.newAnimation(folkGrid('1-6', 1), 0.1)
-    folkAnimations.walk = anim8.newAnimation(folkGrid('1-6', 2), 0.1)
-
-    folkAnimationsConverted = {}
-    folkAnimationsConverted.idle = anim8.newAnimation(folkGridConverted('1-6', 1), 0.1)
-    folkAnimationsConverted.walk = anim8.newAnimation(folkGridConverted('1-6', 2), 0.1)
 
     sounds = {}
     sounds.conversion = love.audio.newSource("sounds/wololo.mp3", "static")
@@ -197,9 +177,18 @@ function love.load()
         end
     end
 
-    Goblin:load(world, sounds)
-    spawnFolks(hud.converted.totalFolks)
-    Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls) -- Spawn goblins via the module
+    local knownFolkPositions = {
+        {x = 140 * 64 + 15, y = 55 * 64 + 15},
+        {x = 158 * 64 + 15, y = 65 * 64 + 15},
+        {x = 192 * 64 + 15, y = 63 * 64 + 15},
+        {x = 140 * 64 + 15, y = 21 * 64 + 15},
+        {x = 46 * 64 + 15, y = 3 * 64 + 15},
+    }
+
+    Folk:load(sounds, conversionPhrases)
+    Goblin:load(sounds)
+    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls, knownFolkPositions)
+    Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
 end
 
 function love.update(dt)
@@ -226,7 +215,7 @@ function love.update(dt)
 
     if player.life <= 0 then
         player.life = 0
-        gameTimer.active = false
+        if gameTimer then gameTimer.active = false end
         currentState = GameState.GAME_OVER
     end
 
@@ -259,11 +248,8 @@ function love.update(dt)
 
     if distance_to_dude < dude.interactionRadius then
         if not dude.dialog then
-            dude.dialog = {
-                text = dude.dialogText,
-                timer = dude.dialogTimerDuration,
-                y_offset = dude.dialogYOffset
-            }
+           showDialog(dude, dude.dialogText)
+           if dude.dialog then dude.dialog.timer = dude.dialogTimerDuration end
         end
     else
         dude.dialog = nil
@@ -276,163 +262,23 @@ function love.update(dt)
         end
     end
 
-    for i = #folks, 1, -1 do
-        local folk = folks[i]
-        if base.collider:enter('ConvertedFolk') and folk.converted then
-            local collisionData = base.collider:getEnterCollisionData('ConvertedFolk')
-            if collisionData and collisionData.collider == folk.collider then
-                hud.converted.peopleConverted = hud.converted.peopleConverted - 1
-                hud.converted.peopleSaved = hud.converted.peopleSaved + 1
+    local victoryMet = Folk:update(dt, player, base, hud, showDialog)
 
-                local conversionSound = sounds.conversion:clone()
-                conversionSound:play()
-
-                local randomPhrase = conversionPhrases[love.math.random(#conversionPhrases)]
-                showDialog(folk, randomPhrase)
-
-                folk.collider:destroy()
-                table.remove(folks, i)
-
-                if hud.converted.peopleSaved >= hud.converted.totalFolks then
-                    currentState = GameState.VICTORY
-                    victory.isActive = true
-                    gameTimer.active = false
-                end
-                goto continue_folk_loop -- Skip rest of update for this removed folk
-            end
-        end
-
-        if player.collider:enter('Folk') and not folk.converted then
-             local collisionData = player.collider:getEnterCollisionData('Folk')
-             if collisionData and collisionData.collider == folk.collider then
-                folk.converted = true
-                folk.sprite = folkSpriteConverted
-                folk.animations = {
-                    idle = folkAnimationsConverted.idle:clone(),
-                    walk = folkAnimationsConverted.walk:clone()
-                }
-                folk.anim = folk.animations.idle
-                folk.facingLeft = false
-                folk.conversionOrder = hud.converted.peopleConverted
-                folk.followDelay = folk.conversionOrder * 0.5
-                folk.conversionTime = love.timer.getTime()
-
-                hud.converted.peopleConverted = hud.converted.peopleConverted + 1
-
-                folk.collider:setCollisionClass('ConvertedFolk')
-
-                local conversionSound = sounds.conversion:clone()
-                conversionSound:play()
-
-                local randomPhrase = conversionPhrases[love.math.random(#conversionPhrases)]
-                showDialog(folk, randomPhrase)
-             end
-        end
-
-        folk.x = folk.collider:getX()
-        folk.y = folk.collider:getY()
-
-        folk.anim:update(dt)
-
-        if folk.dialog then
-            folk.dialog.timer = folk.dialog.timer - dt
-            if folk.dialog.timer <= 0 then
-                folk.dialog = nil
-            end
-        end
-
-        if folk.converted then
-            local currentTime = love.timer.getTime()
-            if currentTime - folk.conversionTime >= folk.followDelay then
-                local targetX, targetY
-
-                if folk.conversionOrder == 0 then
-                    targetX = player.x
-                    targetY = player.y
-                else
-                    local folkToFollow = nil
-                    for _, otherFolk in ipairs(folks) do
-                        if otherFolk.converted and otherFolk.conversionOrder == folk.conversionOrder - 1 then
-                            folkToFollow = otherFolk
-                            break
-                        end
-                    end
-                    if folkToFollow then
-                       targetX = folkToFollow.x
-                       targetY = folkToFollow.y
-                    end
-                end
-
-                if targetX and targetY then
-                    local dx = targetX - folk.x
-                    local dy = targetY - folk.y
-                    local distance = math.sqrt(dx*dx + dy*dy)
-
-                    local minDistance = 60
-                    local maxDistance = 300
-                    local teleportDistance = 600
-
-                    if distance > minDistance then
-                        dx = dx / distance
-                        dy = dy / distance
-
-                        local followSpeed = player.speed
-                        if distance > maxDistance then
-                            followSpeed = player.speed * 1.2
-                        end
-
-                        folk.collider:setLinearVelocity(dx * followSpeed, dy * followSpeed)
-                        folk.anim = folk.animations.walk
-                        folk.facingLeft = dx < 0
-                    else
-                        folk.collider:setLinearVelocity(0, 0)
-                        folk.anim = folk.animations.idle
-                    end
-
-                    if distance > teleportDistance then
-                        local teleportOffset = 100
-                        local teleportAngle = love.math.random() * math.pi * 2
-                        local telportX = targetX + math.cos(teleportAngle) * teleportOffset
-                        local telportY = targetY + math.sin(teleportAngle) * teleportOffset
-
-                        folk.collider:setPosition(telportX, telportY)
-                        folk.x = telportX
-                        folk.y = telportY
-
-                        showDialog(folk, "Catching up!")
-                    end
-                end
-            else
-                folk.collider:setLinearVelocity(0, 0)
-                folk.anim = folk.animations.idle
-            end
-        else
-            folk.collider:setLinearVelocity(0, 0)
-            folk.anim = folk.animations.idle
-        end
-        ::continue_folk_loop::
+    if victoryMet and currentState == GameState.PLAYING then
+        currentState = GameState.VICTORY
+        victory.isActive = true
+        if gameTimer then gameTimer.active = false end
     end
 
-    Goblin:update(dt, player, mapW, mapH) -- Pass necessary parameters
+    Goblin:update(dt, player, mapW, mapH)
 
     cam:lookAt(player.x, player.y)
 
     local w = love.graphics.getWidth()
     local h = love.graphics.getHeight()
 
-    if cam.x < w/2 then
-        cam.x = w/2
-    end
-    if cam.y < h/2 then
-        cam.y = h/2
-    end
-
-    if cam.x > (mapW - w/2) then
-        cam.x = (mapW - w/2)
-    end
-    if cam.y > (mapH - h/2) then
-        cam.y = (mapH - h/2)
-    end
+    cam.x = math.max(w/2, math.min(cam.x, mapW - w/2))
+    cam.y = math.max(h/2, math.min(cam.y, mapH - h/2))
 
 end
 
@@ -461,12 +307,7 @@ function love.draw()
 
         dude.anim:draw(dude.speadSheet, dude.x, dude.y, nil, nil, nil, 96, 96)
 
-
-        for _, folk in ipairs(folks) do
-            local sprite = folk.converted and folkSpriteConverted or folkSprite
-            local scaleX = folk.facingLeft and -1 or 1
-            folk.anim:draw(sprite, folk.x, folk.y, nil, scaleX, 1, 96, 96)
-        end
+        Folk:draw()
 
         Goblin:draw()
 
@@ -476,7 +317,7 @@ function love.draw()
             explosion.animation:draw(effects.explosionSprite, explosion.x, explosion.y, nil, nil, nil, 96, 96)
         end
 
-        for _, folk in ipairs(folks) do
+        for _, folk in ipairs(Folk:getList()) do
             if folk.dialog then
                 drawDialog(folk)
             end
@@ -549,12 +390,16 @@ function drawVictoryScreen()
     love.graphics.print(victoryText, (screenW - textW) / 2, screenH / 6)
 
     love.graphics.setFont(gameOver.smallFont)
-    local statsText = string.format("Time: %02d:%02d",
-        math.floor(gameTimer.time / 60),
-        math.floor(gameTimer.time % 60)
-    )
+    local timeStr = "N/A"
+    if gameTimer then
+       timeStr = string.format("%02d:%02d",
+            math.floor(gameTimer.time / 60),
+            math.floor(gameTimer.time % 60)
+        )
+    end
+    local statsText = string.format("Time: %s", timeStr)
     local statsW = gameOver.smallFont:getWidth(statsText)
-    love.graphics.printf(statsText, (screenW - statsW) / 2, screenH / 3, statsW, "left")
+    love.graphics.printf(statsText, 0, screenH / 3, screenW, "center") -- Use printf for centering
 
     love.graphics.setFont(victory.smallFont)
     local buttonText = "Play Again"
@@ -589,15 +434,21 @@ function drawGameOverScreen()
     love.graphics.print(gameOverText, (screenW - textW) / 2, screenH / 6)
 
     love.graphics.setFont(gameOver.smallFont)
-    local statsText = string.format("Folks Converted: %d\nFolks Saved: %d/%d\nTime: %02d:%02d",
+     local timeStr = "N/A"
+    if gameTimer then
+       timeStr = string.format("%02d:%02d",
+            math.floor(gameTimer.time / 60),
+            math.floor(gameTimer.time % 60)
+        )
+    end
+    local statsText = string.format("Folks Converted: %d\nFolks Saved: %d/%d\nTime: %s",
         hud.converted.peopleConverted,
         hud.converted.peopleSaved,
         hud.converted.totalFolks,
-        math.floor(gameTimer.time / 60),
-        math.floor(gameTimer.time % 60)
+        timeStr
     )
-    local statsW = gameOver.smallFont:getWidth(statsText)
-    love.graphics.printf(statsText, (screenW - statsW) / 2, screenH / 3, statsW, "left")
+    local statsW = gameOver.smallFont:getWidth(statsText) -- Approx width for centering
+    love.graphics.printf(statsText, 0, screenH / 3, screenW, "center") -- Use printf for centering
 
     local buttonText = "Try Again"
     local buttonX = (screenW - gameOver.buttonWidth) / 2
@@ -619,20 +470,22 @@ function love.mousepressed(x, y, button)
     if currentState == GameState.TITLE and button == 1 then
         local screenW = love.graphics.getWidth()
         local screenH = love.graphics.getHeight()
-        local buttonX = (screenW - victory.buttonWidth) / 2
+        local buttonX = (screenW - titleScreen.buttonWidth) / 2 -- Use titleScreen dimensions
         local buttonY = screenH * 0.6
+        local buttonWidth = titleScreen.buttonWidth
+        local buttonHeight = titleScreen.buttonHeight
 
-        if x >= buttonX and x <= buttonX + victory.buttonWidth and
-           y >= buttonY and y <= buttonY + victory.buttonHeight then
+        if x >= buttonX and x <= buttonX + buttonWidth and
+           y >= buttonY and y <= buttonY + buttonHeight then
             currentState = GameState.PLAYING
             resetGame()
         end
-    elseif currentState == GameState.VICTORY or currentState == GameState.GAME_OVER and button == 1 then
+    elseif (currentState == GameState.VICTORY or currentState == GameState.GAME_OVER) and button == 1 then
         local screenW = love.graphics.getWidth()
         local screenH = love.graphics.getHeight()
-        local buttonWidth = currentState == GameState.VICTORY and victory.buttonWidth or gameOver.buttonWidth
-        local buttonHeight = currentState == GameState.VICTORY and victory.buttonHeight or gameOver.buttonHeight
-        local buttonY = currentState == GameState.VICTORY and screenH * 0.6 or screenH * 0.7
+        local buttonWidth = (currentState == GameState.VICTORY) and victory.buttonWidth or gameOver.buttonWidth
+        local buttonHeight = (currentState == GameState.VICTORY) and victory.buttonHeight or gameOver.buttonHeight
+        local buttonY = (currentState == GameState.VICTORY) and screenH * 0.6 or screenH * 0.7
         local buttonX = (screenW - buttonWidth) / 2
 
         if x >= buttonX and x <= buttonX + buttonWidth and
@@ -647,22 +500,31 @@ function resetGame()
     victory.isActive = false
     hud:reset()
     player.life = player.maxLife
+    player.invulnerableTime = 0
 
-    for _, folk in ipairs(folks) do
-        if folk.collider and folk.collider.destroy then
-             folk.collider:destroy()
-        end
-    end
-    folks = {}
-
+    Folk:reset()
     Goblin:reset()
 
-    spawnFolks(hud.converted.totalFolks)
+    local knownFolkPositions = {
+        {x = 140 * 64 + 15, y = 55 * 64 + 15},
+        {x = 158 * 64 + 15, y = 65 * 64 + 15},
+        {x = 192 * 64 + 15, y = 63 * 64 + 15},
+        {x = 140 * 64 + 15, y = 21 * 64 + 15},
+        {x = 46 * 64 + 15, y = 3 * 64 + 15},
+    }
+
+    Folk:spawn(world, hud.converted.totalFolks, mapW, mapH, walls, knownFolkPositions)
     Goblin:spawn(world, hud.converted.totalFolks, mapW, mapH, walls)
 
     local spawnX = mapW / 2
     local spawnY = mapH / 2
     player.collider:setPosition(spawnX, spawnY)
+    player.collider:setLinearVelocity(0, 0)
+
+    if gameTimer then
+       gameTimer.time = 0
+       gameTimer.active = true
+    end
 end
 
 function love.keypressed(key)
@@ -683,11 +545,12 @@ function love.keypressed(key)
         end
     end
 
-    if key == "space" then
-        performAttack("normal")
-    elseif key == "p" and not player.isAttacking and player.powerAttackCooldown <= 0 then
-        performAttack("power")
-        player.powerAttackCooldown = player.attackSettings.powerAttackCooldown
+    if currentState == GameState.PLAYING then
+        if key == "space" then
+            performAttack("normal")
+        elseif key == "p" and not player.isAttacking and player.powerAttackCooldown <= 0 then
+            performAttack("power")
+        end
     end
 end
 
@@ -700,7 +563,7 @@ end
 function checkAttackHits(attackType)
     local attackRange = attackType == "normal" and player.attackSettings.normalAttackRange or player.attackSettings.powerAttackRange
 
-    local hit = Goblin:checkHits(player.x, player.y, attackRange, player.lastDirection, createExplosion)
+    Goblin:checkHits(player.x, player.y, attackRange, player.lastDirection, createExplosion)
 end
 
 
@@ -708,100 +571,14 @@ function drawHud()
     hud:draw(player)
 end
 
-
-function spawnFolks(count)
-    local margin = 200
-    local entityRadius = 30
-    local maxAttemps = 50
-    local centerExclusionRadius = 1000
-
-    local knownPositions = {
-        {x = 140 * 64 + 15, y = 55 * 64 + 15},
-        {x = 158 * 64 + 15, y = 65 * 64 + 15},
-        {x = 192 * 64 + 15, y = 63 * 64 + 15},
-        {x = 140 * 64 + 15, y = 21 * 64 + 15},
-        {x = 46 * 64 + 15, y = 3 * 64 + 15},
-    }
-
-    for i, pos in ipairs(knownPositions) do
-        local folk = {}
-        folk.collider = world:newCircleCollider(pos.x, pos.y, entityRadius)
-        folk.collider:setFixedRotation(true)
-        folk.collider:setCollisionClass('Folk')
-
-        folk.x = pos.x
-        folk.y = pos.y
-        folk.converted = false
-        folk.sprite = folkSprite
-        folk.animations = {
-            idle = folkAnimations.idle:clone(),
-            walk = folkAnimations.walk:clone()
-        }
-        folk.anim = folk.animations.idle
-
-        table.insert(folks, folk)
-    end
-
-    for i = #knownPositions + 1, count do
-        local folk = {}
-        local validPosition = false
-        local attemps = 0
-        local x,y
-
-        while not validPosition and attemps < maxAttemps do
-            attemps = attemps + 1
-            x = love.math.random(margin, mapW - margin)
-            y = love.math.random(margin, mapH - margin)
-
-            local distanceFromCenter = math.sqrt(
-                (x - mapW/2)^2 +
-                (y - mapH/2)^2
-            )
-
-            validPosition = distanceFromCenter > centerExclusionRadius
-            if validPosition then
-                for _, wall in ipairs(walls) do
-                    local wx, wy = wall:getPosition()
-                    local ww, wh = wall.width, wall.height
-
-                    local closestX = math.max(wx - ww/2, math.min(x, wx + ww/2))
-                    local closestY = math.max(wy - wh/2, math.min(y, wy + wh/2))
-
-                    local distanceX = x - closestX
-                    local distanceY = y - closestY
-                    local distanceSquared = distanceX * distanceX + distanceY * distanceY
-
-                    if distanceSquared < entityRadius * entityRadius then
-                        validPosition = false
-                        break
-                    end
-                end
-            end
-        end
-
-        folk.collider = world:newCircleCollider(x, y, entityRadius)
-        folk.collider:setFixedRotation(true)
-        folk.collider:setCollisionClass('Folk')
-
-        folk.x = x
-        folk.y = y
-        folk.converted = false
-        folk.sprite = folkSprite
-        folk.animations = {
-            idle = folkAnimations.idle:clone(),
-            walk = folkAnimations.walk:clone()
-        }
-        folk.anim = folk.animations.idle
-
-        table.insert(folks, folk)
-    end
-end
-
 function showDialog(entity, text)
+    local y_offset = -60
+    if entity == dude then y_offset = dude.dialogYOffset end
+
     entity.dialog = {
         text = text,
         timer = 2,
-        y_offset = entity == dude and dude.dialogYOffset or -60 -- Adjust offset based on entity
+        y_offset = y_offset
     }
 end
 
@@ -812,7 +589,7 @@ function drawDialog(entity)
     love.graphics.setFont(dialogBox.font)
 
     local text = entity.dialog.text
-    local textWidth = dialogBox.font:getWidth(text) -- Use dialog font for width calc
+    local textWidth = dialogBox.font:getWidth(text)
     local textHeight = dialogBox.font:getHeight()
 
     local padding = 20
@@ -825,7 +602,7 @@ function drawDialog(entity)
     local bgX = entity.x - bgWidth/2
     local bgY = entity.y + entity.dialog.y_offset - bgHeight/2
 
-    local alpha = math.min(1, entity.dialog.timer * 2) -- Fade out effect
+    local alpha = math.min(1, entity.dialog.timer * 2)
     love.graphics.setColor(1, 1, 1, alpha)
 
     love.graphics.draw(dialogBox.bgImage, dialogBox.leftSlice, bgX, bgY)
@@ -836,10 +613,10 @@ function drawDialog(entity)
 
     love.graphics.draw(dialogBox.bgImage, dialogBox.rightSlice, bgX + bgWidth - dialogBox.sliceWidth, bgY)
 
-    local textX = bgX + (bgWidth - textWidth)/2 + 8 -- Centering text
+    local textX = bgX + (bgWidth - textWidth)/2 + 8
     local textY = bgY + bgHeight/2 - textHeight/2 - 3
 
-    love.graphics.setColor(0.086, 0.11, 0.18, alpha) -- Text color
+    love.graphics.setColor(0.086, 0.11, 0.18, alpha)
     love.graphics.print(text, textX, textY)
 
     love.graphics.setFont(prevFont)

@@ -7,7 +7,7 @@ Goblin.animations = {}
 Goblin.settings = {}
 Goblin.sounds = {}
 
-function Goblin:load(world, mainSounds)
+function Goblin:load(mainSounds)
     Goblin.sprite = love.graphics.newImage('assets/Factions/Goblins/Troops/Torch/Red/Torch_Red.png')
     Goblin.grid = anim8.newGrid(192, 192, Goblin.sprite:getWidth(), Goblin.sprite:getHeight())
 
@@ -34,7 +34,6 @@ function Goblin:load(world, mainSounds)
     Goblin.sounds.lastDetectionIndex = 0
     Goblin.sounds.lastHitIndex = 0
 
-    world:addCollisionClass('Goblin')
 end
 
 function Goblin:spawn(world, count, mapW, mapH, walls)

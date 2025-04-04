@@ -3,19 +3,14 @@ local Hud = {
     life = {}
 }
 
-function Hud:load()
-    -- Timer font
-    self.gameTimer = {
-        time = 0,
-        active = false,
-        font = love.graphics.newFont('assets/Fonts/InknutAntiqua-SemiBold.ttf', 32)
-    }
+function Hud:load(gameTimer)
+    self.gameTimer = gameTimer
 
     -- Converted folks counter
     self.converted.bgImage = love.graphics.newImage('assets/UI/Banners/Converted-Banner.png', { dpiscale = 1.4 })
     self.converted.peopleConverted = 0
     self.converted.peopleSaved = 0
-    self.converted.totalFolks = 30
+    self.converted.totalFolks = 1
     self.converted.font = love.graphics.newFont('assets/Fonts/Condiment-Regular.ttf', 28)
 
     -- Life bar
