@@ -1,6 +1,9 @@
 # Mane Attraction
 
-This project is part of the Team Liquid 2025 game jam.
+Simple 2D adventure game built in Love2D, a game-framework for the Lua language.
+
+Play in the browser here:
+https://eetwalt.itch.io/mane-attraction
 
 ## Game Description
 Find Folks, Convert Folks, Save Folks. Defeat nasty Goblins. Save all Folks to win.
